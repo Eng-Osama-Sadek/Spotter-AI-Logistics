@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotter AI - Logistics</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #map { height: 500px; width: 100%; border-radius: 15px; }
+    </style>
+</head>
+<body class="bg-slate-100 p-6">
+    <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+            <h1 class="text-2xl font-bold text-indigo-900 mb-6">SPOTTER AI</h1>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase">Current Location</label>
+                    <input id="current" type="text" value="New York, NY" class="w-full mt-1 p-2 border rounded-md">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase">Pickup Location</label>
+                    <input id="pickup" type="text" value="Philadelphia, PA" class="w-full mt-1 p-2 border rounded-md">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase">Dropoff Location</label>
+                    <input id="dropoff" type="text" value="Washington, DC" class="w-full mt-1 p-2 border rounded-md">
+                </div>
+                <button onclick="calculateTrip()" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-200">
+                    Calculate Route
+                </button>
+            </div>
+
+            <div id="results" class="mt-8 space-y-4 hidden">
+                <div class="p-4 bg-indigo-50 rounded-lg">
+                    <p class="text-xs text-indigo-600 font-bold uppercase">Deadhead Distance</p>
+                    <p id="dead-val" class="text-xl font-black text-indigo-900">0 miles</p>
+                </div>
+                <div class="p-4 bg-green-50 rounded-lg">
+                    <p class="text-xs text-green-600 font-bold uppercase">Loaded Distance</p>
+                    <p id="load-val" class="text-xl font-black text-green-900">0 miles</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-3">
+            <div id="map" class="shadow-xl border-4 border-white"></div>
+        </div>
+    </div>
+
+    <script>
+        // إعداد الخريطة
+        var map = L.map('map').setView([39.8283, -98.5795], 4);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        var markers = [];
+        var polyline;
+
+        async function calculateTrip() {
+            const current = document.getElementById('current').value;
+            const pickup = document.getElementById('pickup').value;
+            const dropoff = document.getElementById('dropoff').value;
+
+            try {
+                // الربط مع Django
+                const response = await fetch('http://127.0.0.1:8000/api/calculate-trip/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        current_location: current,
+                        pickup_location: pickup,
+                        dropoff_location: dropoff
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert("Backend Error: " + data.error);
+                    return;
+                }
+
+                // عرض النتائج في الصفحة
+                document.getElementById('results').classList.remove('hidden');
+                document.getElementById('dead-val').innerText = data.distance_to_pickup_miles + " mi";
+                document.getElementById('load-val').innerText = data.trip_distance_miles + " mi";
+
+                // مسح الخريطة القديمة
+                markers.forEach(m => map.removeLayer(m));
+                if (polyline) map.removeLayer(polyline);
+
+                // إضافة العلامات الجديدة
+                const points = [
+                    [data.coordinates.current.lat, data.coordinates.current.lng],
+                    [data.coordinates.pickup.lat, data.coordinates.pickup.lng],
+                    [data.coordinates.dropoff.lat, data.coordinates.dropoff.lng]
+                ];
+
+                points.forEach((p, i) => {
+                    const marker = L.marker(p).addTo(map);
+                    markers.push(marker);
+                });
+
+                // رسم الخط الأزرق
+                polyline = L.polyline(points, {color: '#4f46e5', weight: 5}).addTo(map);
+                map.fitBounds(polyline.getBounds(), {padding: [50, 50]});
+
+            } catch (err) {
+                console.error(err);
+                alert("Cannot connect to Django. Check if it's running on port 8000!");
+            }
+        }
+    </script>
+</body>
+</html>
